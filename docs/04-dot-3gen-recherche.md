@@ -1,6 +1,6 @@
 # Root-Zugriff-Recherche: Echo Dot 3. Gen (MT8516, "Donut")
 
-Ziel: verlässlicher Code-Execution/Root-Zugriff auf einem selbst gekauften Echo Dot 3. Gen (Modell D9N29T, FCC ID 2AOAG-3668, SoC MediaTek MT8516BAAA) als Hobby-Reverse-Engineering-Projekt. **Nicht** TLS-Interception (separates, noch aufwändigeres Folgeprojekt).
+Ziel: verlässlicher Code-Execution/Root-Zugriff auf einem selbst gekauften Echo Dot 3. Gen (Modell D9N29T, FCC ID 2AOAG-3668, SoC MediaTek MT8516BAAA) als Hobby-Reverse-Engineering-Projekt, inkl. Folgerecherche zur eigenen CA/TLS-Interception (siehe [eigener Abschnitt](#folgerecherche-eigene-ca--tls-interception) unten).
 
 **Ehrliches Fazit vorweg:** Es gibt aktuell **keine fertige, dokumentierte Root-Methode** für dieses Gerät. Der unten skizzierte Pfad ist der plausibelste recherchierte Ausgangspunkt für eigene Forschung — kein garantiertes Rezept. Jede Kernbehauptung wurde mit mehreren unabhängigen Quellen gegengeprüft (siehe [Quellen](#quellen)); Behauptungen, die die Prüfung nicht überstanden, sind explizit unter [Widerlegt](#widerlegt-nicht-glauben) aufgeführt.
 
@@ -58,6 +58,29 @@ flowchart TD
 
 **Wichtigste Regel:** Schritt 3 (Backup) ist die Grenze zwischen "jederzeit rückgängig machbar" und "echtes Risiko". Nichts vor Schritt 3 schreiben.
 
+## Folgerecherche: eigene CA / TLS-Interception
+
+Aufbauend auf obiger Root-Recherche: Angenommen, Schritt 3 (eMMC/NAND-Backup) gelingt und liefert Schreibzugriff — wie käme man dann tatsächlich an entschlüsselten TLS-Traffic? Auch hier gilt: **kein Rezept, sondern der ehrlichste verfügbare Zwischenstand.**
+
+**Wichtige Korrektur gegenüber der ursprünglichen Annahme:** Der Echo Dot läuft **nicht** auf einem minimalen Custom-Linux, sondern auf **Fire OS = einem angepassten Android** (Generation 3 konkret: **Android 7.1.2 „Nougat"**). **Confidence: hoch**, 3/3-Votum, zwei unabhängige Primärquellen (Giese & Noubir, WiSec 2021, sowohl als Preprint als auch als ACM-DL-Version separat verifiziert). Das ist strukturell eine gute Nachricht: Der SoC ist zudem ein **64-bit ARM64/AArch64**-Vierkerner (nicht 32-bit, wie zunächst vermutet) — Standard-Android-Sicherheitstooling (Frida, SSL-Pinning-Bypass-Techniken) ist damit architektonisch grundsätzlich kompatibel, *sofern* Root erreicht wird und Frida sich auf dieser spezifischen Fire-OS-Variante tatsächlich zum Laufen bringen lässt (unbestätigt).
+
+### Der einzige bestätigte volle Erfolg — und warum er nicht direkt übertragbar ist
+
+Ein akademisches Forscherteam (Janak, Tseng, Isaacs, Schulzrinne, Columbia University, IEEE GLOBECOM 2021) hat Root-Zugriff auf einen Echo erreicht und dessen TLS-Traffic zur Amazon-Cloud erfolgreich entschlüsselt. **Confidence: hoch, 3/3**, [arxiv.org/pdf/2105.13500](https://arxiv.org/pdf/2105.13500). **Entscheidender Haken:** Das war ein **Echo der 1. Generation** (2016, deutlich ältere/schwächere Hardware, UART-Zugriff+SD-Karten-Boot) — **nicht** der Dot 3. Gen (MT8516). Der genaue technische Mechanismus, wie sie TLS-Vertrauen ausgehebelt haben, ließ sich in der Verifikation nicht mehr eindeutig bestätigen (die entsprechende Detail-Behauptung wurde verworfen, 0-3) — die Methode selbst bleibt also im Detail unklar, nur das Endergebnis (Entschlüsselung gelungen) ist gut belegt.
+
+### Hinweise auf reale Hürden bei näher verwandten Geräten
+
+Diese Punkte konnten wegen eines technischen Rate-Limits beim Recherche-Tool nicht mehr gegenverifiziert werden (nur 1 statt 3 Stimmen pro Behauptung) — Quellen sind aber inhaltlich plausibel und stammen aus brauchbaren Primär-/Blog-Quellen, deshalb hier als **unverifiziert, aber relevant** aufgeführt:
+
+- Ein Uni-Capstone-Projekt versuchte einen SSLsplit-MITM-Angriff gegen den **Echo Dot 2. Gen** (MT8163 — engster verwandter Chip zum MT8516) — **das Zertifikat wurde vom Gerät abgelehnt**, die Verbindung schlug fehl. Deutet auf aktive Zertifikatsprüfung/Pinning auf dieser Geräte-Familie hin. ([github.com/jhautry/echo-dot](https://github.com/jhautry/echo-dot))
+- Ein anderes Forschungsteam hatte **vollen eMMC-Dateisystem-Zugriff** auf ein Fire-OS-Echo-Gerät, konnte aber **keine eigene CA installieren oder einen Proxy setzen** — sie gaben die On-Device-Interception explizit auf und wichen auf Companion-App-/Cloud-API-Analyse aus. ([arxiv.org/pdf/2408.15768](https://arxiv.org/pdf/2408.15768))
+- Der bestehende Kamakiri-Root-Guide für den Dot 2. Gen (der einzige öffentlich dokumentierte volle Root-Erfolg in der Produktfamilie) enthält **keinerlei** Hinweise zu TLS-Interception, CA-Installation oder Pinning — Root wurde erreicht, aber niemand hat den nächsten Schritt veröffentlicht. ([danieldb.uk/posts/alexa-2](https://danieldb.uk/posts/alexa-2/))
+- Der LineageOS-Jailbreak-Weg für Echo Show 5/8 (derekseaman.com) **ersetzt Fire OS komplett** durch ein normales Android — das bedeutet, der ursprüngliche Alexa/AVS-Client (dessen Traffic man eigentlich abhören wollte) ist danach schlicht **weg**. Root über diesen Weg löst also nicht das eigentliche Beobachtungsziel.
+
+### Realistische Einordnung
+
+TLS-Interception ist **nicht** "CA installieren, fertig" — selbst der einzige bestätigte volle Erfolg war an viel älterer, schwächerer Hardware. Die (unverifizierten, aber plausiblen) Datenpunkte oben deuten übereinstimmend auf **aktives Certificate Pinning oder zumindest harte Trust-Store-Validierung** in der Echo-Dot-Produktfamilie hin, die über eine reine System-CA-Store-Änderung hinausgeht. Realistisch bedeutet das: Selbst nach erfolgreichem Root (schon für sich unsicher, siehe oben) kommt vermutlich ein **zweiter, eigenständig schwieriger Schritt** dazu — Pinning-Bypass via Frida/Runtime-Hooking (Android-Tooling technisch anwendbar, da Fire OS = Android) oder Reverse Engineering des statisch gelinkten AVS-Clients (Ghidra). Das ist eher **"eine ganze Stufe schwerer"** als "moderat schwerer" on top vom bereits unsicheren Root-Schritt — kein Wochenend-Projekt, sondern ein eigenständiges Forschungsvorhaben.
+
 ## Widerlegt — nicht glauben
 
 Diese Annahmen aus der Ausgangsrecherche wurden explizit **verworfen**:
@@ -86,3 +109,7 @@ Diese Annahmen aus der Ausgangsrecherche wurden explizit **verworfen**:
 | [github.com/echohacking/wiki/wiki/Echo-Dot-v3](https://github.com/echohacking/wiki/wiki/Echo-Dot-v3) | Community-Wiki (aktuell ohne Exploit-Anleitung) |
 | [danieldb.uk/posts/alexa-2](https://danieldb.uk/posts/alexa-2/) | Blog (bezieht sich auf Gen 2, als Kontrastfolie relevant) |
 | [hackaday.com — Root on an Amazon Echo Dot](https://hackaday.com/2023/07/22/root-on-an-amazon-echo-dot/) | Blog (Gen 2) |
+| Janak, Tseng, Isaacs, Schulzrinne — "An Analysis of Amazon Echo's Network Behavior", IEEE GLOBECOM 2021 ([PDF](https://arxiv.org/pdf/2105.13500)) | primär, peer-reviewed |
+| [github.com/jhautry/echo-dot](https://github.com/jhautry/echo-dot) | Uni-Capstone-Projekt (unverifiziert, 1 Quelle) |
+| [arxiv.org/pdf/2408.15768](https://arxiv.org/pdf/2408.15768) | Preprint (unverifiziert, 1 Quelle) |
+| [derekseaman.com — Home Assistant Hacking Echo Show 5/8](https://www.derekseaman.com/2025/11/home-assistant-hacking-your-echo-show-5-and-8.html) | Blog (unverifiziert, 1 Quelle) |
