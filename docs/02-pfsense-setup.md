@@ -49,14 +49,22 @@ qm reboot 100
 5. **Block** → `172.16.0.0/12`
 6. **Block** → `192.168.0.0/16` (blockt auch den Rest von Bad!Net, außer der explizit erlaubten AdGuard-IP aus Regel 1)
 7. HTTPS `:443` → Internet (geloggt, für Volumen-Monitoring)
-8. STUN/TURN `:3478` (TCP+UDP)
-9. SRTP-Audio `udp/49152-65535`
-10. NTP `udp/123`
-11–14. Amazon Custom-Ports `4070`, `33434`, `40317`, `49317` (TCP+UDP)
+8. HTTP `:80` → Internet (TCP, geloggt) — **nachträglich ergänzt** (21.07.), siehe [Bekannte Probleme](#bekannte-probleme-nach-erster-migration)
+9. STUN/TURN `:3478` (TCP+UDP)
+10. SRTP-Audio `udp/49152-65535`
+11. NTP `udp/123`
+12–15. Amazon Custom-Ports `4070`, `33434`, `40317`, `49317` (TCP+UDP)
 
 ![Firewall-Regeln](images/03-firewall-rules-opt3.png)
 
 Alles außerhalb dieser Liste fällt auf pfSenses impliziten Deny-All am Ende der Kette — kein extra Regel nötig.
+
+## Bekannte Probleme (nach erster Migration)
+
+Nach der ersten realen Geräte-Migration (Echo Show, 21.07.) zwei Live-Erkenntnisse:
+
+- **HTTP `:80` fehlte in der ursprünglichen Regel-Liste.** Symptom: Gerät verbindet sich, spielt kurz, hört dann plötzlich auf zu reagieren/spielen. Ursache: Amazon-Geräte machen offenbar einen HTTP-Connectivity-Check zu mehreren AWS-Hosts, bevor sie sich als "voll verbunden" betrachten — ohne Port 80 bleibt das Gerät in einem inkonsistenten Zustand. Fix: Regel 8 oben ergänzt (analog zu HTTPS, nur TCP).
+- **Multi-Room/Gruppen-Funktionen zwischen migrierten und nicht-migrierten Geräten funktionieren nicht mehr** (beobachtet: wiederholte geblockte Verbindungsversuche zum noch nicht migrierten zweiten Echo-Gerät auf Port `55443`). Das ist **erwartetes Verhalten** der VLAN-Isolation, kein Bug — sobald alle Alexa-Geräte in VLAN14 sind, sollte das wieder funktionieren (beide dann intern erreichbar, nicht mehr durch die Lateral-Movement-Blockregeln getrennt).
 
 ## Verifikation
 
